@@ -37,7 +37,9 @@ const Dashboard = () => {
                 {
                   label: "Обновить",
                   icon: RefreshCw,
-                  onClick: () => {
+                  onClick: (e) => {
+                    e?.preventDefault();
+                    e?.stopPropagation();
                     queryClient.invalidateQueries({ queryKey: ['zakazi-kanban'] });
                     queryClient.invalidateQueries({ queryKey: ['zadachi-for-kanban'] });
                   },

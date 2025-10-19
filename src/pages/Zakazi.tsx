@@ -204,14 +204,20 @@ const Zakazi = () => {
               {
                 label: "Обновить",
                 icon: RefreshCw,
-                onClick: () => refetch(),
+                onClick: (e) => {
+                  e?.preventDefault();
+                  refetch();
+                },
                 variant: "outline",
                 size: "sm"
               },
               {
                 label: "Новый заказ",
                 icon: Plus,
-                onClick: () => setShowCreateDialog(true),
+                onClick: (e) => {
+                  e?.preventDefault();
+                  setShowCreateDialog(true);
+                },
                 variant: "default"
               }
             ]}

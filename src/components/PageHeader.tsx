@@ -6,7 +6,7 @@ import { LucideIcon } from "lucide-react";
 interface ActionButton {
   label: string;
   icon: LucideIcon;
-  onClick: () => void;
+  onClick: (e?: React.MouseEvent) => void;
   variant?: "default" | "outline" | "ghost" | "destructive" | "secondary";
   size?: "default" | "sm" | "lg" | "icon";
 }
@@ -166,7 +166,12 @@ export const PageHeader = ({
                   <Button 
                     variant={action.variant || "default"}
                     size={action.size || "sm"}
-                    onClick={action.onClick}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      action.onClick();
+                    }}
+                    type="button"
                     className="shadow-sm hover:shadow-md transition-all duration-200 backdrop-blur-sm font-medium"
                   >
                     <action.icon className="h-4 w-4 mr-2" />

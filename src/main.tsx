@@ -1,4 +1,4 @@
-/* Force CSS reload v2 */
+/* Force CSS reload v3 - styles update */
 import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import "./index.css";

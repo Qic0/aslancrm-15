@@ -136,21 +136,30 @@ const Zadachi = () => {
               {
                 label: "Фильтр",
                 icon: Filter,
-                onClick: () => setFilterDialogOpen(true),
+                onClick: (e) => {
+                  e?.preventDefault();
+                  setFilterDialogOpen(true);
+                },
                 variant: "outline",
                 size: "sm"
               },
               {
                 label: "Обновить",
                 icon: RefreshCw,
-                onClick: () => refetch(),
+                onClick: (e) => {
+                  e?.preventDefault();
+                  refetch();
+                },
                 variant: "outline",
                 size: "sm"
               },
               {
                 label: "Новая задача",
                 icon: Plus,
-                onClick: () => setCreateTaskOpen(true),
+                onClick: (e) => {
+                  e?.preventDefault();
+                  setCreateTaskOpen(true);
+                },
                 variant: "default"
               }
             ]}
