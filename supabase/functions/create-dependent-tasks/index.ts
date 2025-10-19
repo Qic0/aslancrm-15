@@ -47,13 +47,49 @@ serve(async (req) => {
       throw settingsError;
     }
 
+    // Получаем ВСЕ automation_settings для текущего этапа
+    const { data: allStageSettings } = await supabase
+      .from('automation_settings')
+      .select('id, task_name, responsible_user_id')
+      .eq('stage_id', completedTask.stage_id);
+
+    console.log(`Total tasks configured for stage ${completedTask.stage_id}:`, allStageSettings?.length || 0);
+
     if (!dependentSettings || dependentSettings.length === 0) {
-      console.log('No dependent tasks found');
+      console.log('No dependent tasks found for this automation setting');
       
-      // Вызываем проверку завершения этапа
-      await supabase.functions.invoke('check-stage-completion', {
-        body: { order_id: completedTask.zakaz_id }
-      });
+      // Проверяем, нужно ли вызывать check-stage-completion
+      // Получаем ВСЕ существующие задачи этапа
+      const { data: existingTasks } = await supabase
+        .from('zadachi')
+        .select('automation_setting_id, status')
+        .eq('zakaz_id', completedTask.zakaz_id)
+        .eq('stage_id', completedTask.stage_id);
+
+      // Фильтруем задачи которые должны быть созданы (есть responsible_user_id)
+      const requiredSettings = allStageSettings?.filter(s => s.responsible_user_id) || [];
+      
+      // Проверяем, что созданы ВСЕ задачи
+      const allTasksCreated = requiredSettings.every(setting =>
+        existingTasks?.some(task => task.automation_setting_id === setting.id)
+      );
+      
+      // Проверяем, что ВСЕ задачи завершены
+      const allTasksCompleted = existingTasks?.every(task => 
+        task.status === 'completed'
+      ) ?? false;
+      
+      console.log(`Stage check: ${existingTasks?.length || 0}/${requiredSettings.length} tasks created, all completed: ${allTasksCompleted}`);
+      
+      // Вызываем check-stage-completion ТОЛЬКО если выполнены оба условия
+      if (allTasksCreated && allTasksCompleted) {
+        console.log('All tasks created and completed, triggering stage completion check');
+        await supabase.functions.invoke('check-stage-completion', {
+          body: { order_id: completedTask.zakaz_id }
+        });
+      } else {
+        console.log('Not all tasks in chain created/completed yet, waiting...');
+      }
       
       return new Response(
         JSON.stringify({ message: 'No dependent tasks' }),
@@ -166,15 +202,49 @@ serve(async (req) => {
 
     console.log(`Created ${createdTasks.length} dependent task(s)`);
 
-    // Всегда проверяем завершение этапа после создания зависимых задач
-    // check-stage-completion сам решит, нужно ли переносить заказ
-    try {
-      await supabase.functions.invoke('check-stage-completion', {
-        body: { order_id: completedTask.zakaz_id }
-      });
-      console.log('Stage completion check triggered for order:', completedTask.zakaz_id);
-    } catch (checkError) {
-      console.error('Error checking stage completion:', checkError);
+    // Проверяем, нужно ли вызывать check-stage-completion
+    // Получаем ВСЕ существующие задачи этапа (включая только что созданные)
+    const { data: existingTasksAfter } = await supabase
+      .from('zadachi')
+      .select('automation_setting_id, status')
+      .eq('zakaz_id', completedTask.zakaz_id)
+      .eq('stage_id', completedTask.stage_id);
+
+    // Получаем ВСЕ automation_settings для текущего этапа (если не было получено ранее)
+    const { data: allStageSettings } = await supabase
+      .from('automation_settings')
+      .select('id, task_name, responsible_user_id')
+      .eq('stage_id', completedTask.stage_id);
+
+    // Фильтруем задачи которые должны быть созданы (есть responsible_user_id)
+    const requiredSettings = allStageSettings?.filter(s => s.responsible_user_id) || [];
+    
+    // Проверяем, что созданы ВСЕ задачи
+    const allTasksCreated = requiredSettings.every(setting =>
+      existingTasksAfter?.some(task => task.automation_setting_id === setting.id)
+    );
+    
+    // Проверяем, что ВСЕ задачи завершены
+    const allTasksCompleted = existingTasksAfter?.every(task => 
+      task.status === 'completed'
+    ) ?? false;
+    
+    const completedCount = existingTasksAfter?.filter(t => t.status === 'completed').length || 0;
+    console.log(`Stage ${completedTask.stage_id}: ${existingTasksAfter?.length || 0}/${requiredSettings.length} tasks created, ${completedCount} completed`);
+    
+    // Вызываем check-stage-completion ТОЛЬКО если выполнены оба условия
+    if (allTasksCreated && allTasksCompleted) {
+      console.log('All tasks in chain created and completed, triggering stage completion check');
+      try {
+        await supabase.functions.invoke('check-stage-completion', {
+          body: { order_id: completedTask.zakaz_id }
+        });
+        console.log('Stage completion check triggered for order:', completedTask.zakaz_id);
+      } catch (checkError) {
+        console.error('Error checking stage completion:', checkError);
+      }
+    } else {
+      console.log('Not all tasks completed yet, stage transition will wait');
     }
 
     return new Response(

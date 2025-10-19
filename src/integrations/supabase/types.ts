@@ -605,6 +605,10 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: boolean
       }
+      pg_try_advisory_xact_lock: {
+        Args: { lock_id: number }
+        Returns: boolean
+      }
       reject_task: {
         Args: {
           p_dispatcher_id: string

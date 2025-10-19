@@ -20,6 +20,25 @@ serve(async (req) => {
     
     console.log('Checking stage completion for order:', order_id);
 
+    // ЗАЩИТА ОТ RACE CONDITION: используем advisory lock
+    const { data: lockResult, error: lockError } = await supabase
+      .rpc('pg_try_advisory_xact_lock', { lock_id: order_id });
+
+    if (lockError) {
+      console.error('Error acquiring lock:', lockError);
+      throw lockError;
+    }
+
+    if (!lockResult) {
+      console.log('Another instance is processing this order, skipping');
+      return new Response(
+        JSON.stringify({ message: 'Already being processed by another instance' }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    console.log('Lock acquired for order:', order_id);
+
     // Получаем информацию о заказе
     const { data: order, error: orderError } = await supabase
       .from('zakazi')
@@ -38,28 +57,66 @@ serve(async (req) => {
     const currentStage = order.status;
     console.log('Current stage:', currentStage);
 
-    // Проверяем, все ли задачи ТЕКУЩЕГО ЭТАПА завершены
-    const { data: incompleteTasks, error: tasksError } = await supabase
+    // УЛУЧШЕННАЯ ПРОВЕРКА: Получаем ВСЕ настройки автоматизации для этапа
+    const { data: allStageSettings, error: settingsError } = await supabase
+      .from('automation_settings')
+      .select('id, task_name, responsible_user_id')
+      .eq('stage_id', currentStage);
+
+    if (settingsError) {
+      console.error('Error fetching automation settings:', settingsError);
+      throw settingsError;
+    }
+
+    // Получаем существующие задачи
+    const { data: existingTasks, error: tasksError } = await supabase
       .from('zadachi')
-      .select('id_zadachi')
+      .select('id_zadachi, automation_setting_id, status')
       .eq('zakaz_id', order_id)
-      .eq('stage_id', currentStage)
-      .neq('status', 'completed');
+      .eq('stage_id', currentStage);
 
     if (tasksError) {
       console.error('Error checking tasks:', tasksError);
       throw tasksError;
     }
 
-    if (incompleteTasks && incompleteTasks.length > 0) {
-      console.log('Not all tasks completed, found incomplete:', incompleteTasks.length);
-      return new Response(
-        JSON.stringify({ message: 'Not all tasks completed' }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    console.log(`Stage ${currentStage}: Found ${allStageSettings?.length || 0} automation settings, ${existingTasks?.length || 0} existing tasks`);
+
+    // Проверяем каждую настройку автоматизации
+    for (const setting of allStageSettings || []) {
+      // Пропускаем задачи без ответственного (они не должны создаваться)
+      if (!setting.responsible_user_id) {
+        console.log(`Skipping check for task without responsible: ${setting.task_name}`);
+        continue;
+      }
+
+      const task = existingTasks?.find(t => t.automation_setting_id === setting.id);
+
+      if (!task) {
+        console.log(`Task not yet created: ${setting.task_name} (automation_setting_id: ${setting.id})`);
+        return new Response(
+          JSON.stringify({ 
+            message: 'Not all tasks created yet',
+            missing_task: setting.task_name
+          }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      if (task.status !== 'completed') {
+        console.log(`Task not completed: ${setting.task_name} (task_id: ${task.id_zadachi}, status: ${task.status})`);
+        return new Response(
+          JSON.stringify({ 
+            message: 'Not all tasks completed',
+            incomplete_task: setting.task_name,
+            task_status: task.status
+          }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
     }
 
-    console.log('All tasks completed for current stage');
+    console.log('✅ All tasks in automation chain created and completed for current stage');
 
     // Получаем следующий этап из цепочки автоматизации
     const { data: chain, error: chainError } = await supabase

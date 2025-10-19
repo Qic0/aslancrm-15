@@ -27,6 +27,9 @@ export const useAutoTaskCreation = () => {
         !setting.depends_on_task_id
       ).sort((a, b) => (a.task_order_position || 0) - (b.task_order_position || 0));
       
+      console.log(`Creating immediate tasks for stage ${newStage}:`, immediateSettings.length);
+      console.log(`Tasks with dependencies will be created automatically after parent task completion`);
+      
       if (immediateSettings.length === 0) {
         if (process.env.NODE_ENV === 'development') {
           console.log(`Нет immediate задач без зависимостей для этапа: ${newStage}`);
