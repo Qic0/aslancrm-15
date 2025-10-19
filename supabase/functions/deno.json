@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": false,
+    "lib": ["deno.window"],
+    "strict": false
+  },
+  "nodeModulesDir": "auto",
+  "imports": {
+    "resend": "npm:resend@2.0.0",
+    "web-push": "npm:web-push@3.6.7",
+    "@types/web-push": "npm:@types/web-push@3.6.0"
+  }
+}
